@@ -9,16 +9,14 @@ import sys
 
 def resource_path(relative_path):
     """ Get absolute path to resource, works for dev and for PyInstaller """
-    try:
-        # PyInstaller creates a temp folder and stores path in _MEIPASS
-        base_path = sys._MEIPASS
-    except AttributeError:
-        base_path = os.path.abspath(".")
-    
+    # Get the directory of the script file
+    base_path = os.path.dirname(os.path.abspath(__file__))
     return os.path.join(base_path, relative_path)
 
 def connect_db():
-    conn = sqlite3.connect(resource_path('data/quiz.db'))
+    # Connect to the SQLite database inside the 'data' folder under 'src'
+    db_path = resource_path('data/quiz.db')
+    conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
     return conn, cursor
 
