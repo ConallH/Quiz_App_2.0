@@ -18,7 +18,7 @@ def resource_path(relative_path):
     return os.path.join(base_path, relative_path)
 
 def connect_db():
-    conn = sqlite3.connect(resource_path('data\\quiz.db'))
+    conn = sqlite3.connect(resource_path('data/quiz.db'))
     cursor = conn.cursor()
     return conn, cursor
 
@@ -35,9 +35,34 @@ def create_table(cursor):
         explanation TEXT
     );
     ''')
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS quiz_results (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        timestamp TEXT NOT NULL,
+        score INTEGER NOT NULL,
+        total_questions INTEGER NOT NULL,
+        percentage REAL NOT NULL
+    );
+    ''')
 
 def fetch_questions(cursor):
     cursor.execute("SELECT * FROM quiz_questions")
+    return cursor.fetchall()
+
+def save_result(cursor, conn, score, total_questions, percentage):
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    cursor.execute('''
+    INSERT INTO quiz_results (timestamp, score, total_questions, percentage)
+    VALUES (?, ?, ?, ?)
+    ''', (timestamp, score, total_questions, percentage))
+    conn.commit()
+
+def fetch_last_results(cursor, limit=5):
+    cursor.execute('''
+    SELECT timestamp, score, total_questions, percentage FROM quiz_results
+    ORDER BY id DESC
+    LIMIT ?
+    ''', (limit,))
     return cursor.fetchall()
 
 class QuizApp(CTk):
@@ -50,11 +75,11 @@ class QuizApp(CTk):
         self.current_question = 0
         self.score = 0
         self.total_questions = len(questions)
-        
+
         # Create a frame to hold the question and buttons
         self.main_frame = CTkFrame(self)
         self.main_frame.pack(expand=True, fill="both", padx=20, pady=20)
-        
+
         self.question_label = CTkLabel(self.main_frame, text="", font=("Arial", 16), wraplength=500)
         self.question_label.pack(pady=20)
 
@@ -84,6 +109,9 @@ class QuizApp(CTk):
         self.results_label = CTkLabel(self.results_frame, text="", font=("Arial", 16), wraplength=500)
         self.results_label.pack(pady=20)
 
+        self.last_results_label = CTkLabel(self.results_frame, text="", font=("Arial", 12), wraplength=500)
+        self.last_results_label.pack(pady=10)
+
         # Update wraplength according to window size
         self.update_wraplength()
 
@@ -97,12 +125,13 @@ class QuizApp(CTk):
         self.question_label.configure(wraplength=width)
         self.explanation_label.configure(wraplength=width)
         self.results_label.configure(wraplength=width)
+        self.last_results_label.configure(wraplength=width)
 
     def show_question(self):
         if self.current_question < self.total_questions:
             self.main_frame.pack(expand=True, fill="both", padx=20, pady=20)
             self.results_frame.pack_forget()  # Hide results frame
-            
+
             question = self.questions[self.current_question]
             self.question_label.configure(text=question[1])
             self.option_a_button.configure(text=f"A. {question[2]}")
@@ -132,23 +161,23 @@ class QuizApp(CTk):
     def show_result(self):
         self.main_frame.pack_forget()  # Hide the main frame
         self.results_frame.pack(expand=True, fill="both", padx=20, pady=20)  # Show the results frame
-        
+
         percentage = (self.score / self.total_questions) * 100
         result_text = f"Your final score is: {self.score}/{self.total_questions}\nYour percentage is: {percentage:.2f}%"
         self.results_label.configure(text=result_text)
-        
-        # Append results to the .md file
-        self.generate_results_file(result_text)
 
-    def generate_results_file(self, result_text):
-        filename = "quiz_results.md"
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        # Save result to database and fetch last 5 results
+        conn, cursor = connect_db()
+        save_result(cursor, conn, self.score, self.total_questions, percentage)
+        last_results = fetch_last_results(cursor)
+        conn.close()
+
+        last_results_text = "\n\n Last 5 Quiz Results\n"
+        for result in last_results:
+            last_results_text += f"- **Date:** {result[0]}, **Score:** {result[1]}/{result[2]}, **Percentage:** {result[3]:.2f}%\n"
         
-        with open(filename, 'a') as file:
-            file.write(f"\n## Quiz Results - {timestamp}\n")
-            file.write(f"**Final Score:** {self.score}/{self.total_questions}\n")
-            file.write(f"**Percentage:** {result_text.split('Your percentage is: ')[1]}\n")
-            file.write("\n---\n")  # Separator between results
+        self.last_results_label.configure(text=last_results_text)
+        
 
 def main():
     conn, cursor = connect_db()
