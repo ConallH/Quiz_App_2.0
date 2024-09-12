@@ -74,10 +74,10 @@ To ensure the script works correctly, your input should be a properly formatted 
 ```bash
 QUIZ_APP_2.0/
 │
-├── data/
-│   └── quiz.db           # SQLite database file
 │
 ├── src/
+│   ├── data/
+│       └── quiz.db       # SQLite database file
 │   ├── create_db.py      # Script to create the database and tables
 │   ├── icon.ico          # Icon for package
 │   ├── insert_data.py    # Script to insert quiz data into the database

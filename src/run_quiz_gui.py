@@ -7,18 +7,45 @@ from datetime import datetime
 import os
 import sys
 
+import os
+import sys
+
 def resource_path(relative_path):
     """ Get absolute path to resource, works for dev and for PyInstaller """
-    # Get the directory of the script file
-    base_path = os.path.dirname(os.path.abspath(__file__))
+    try:
+        # PyInstaller creates a temp folder and stores path in _MEIPASS
+        base_path = sys._MEIPASS
+    except AttributeError:
+        # Base path is the script's directory (src folder in development)
+        base_path = os.path.dirname(__file__)  # Corrects the base path to current script folder
+    
     return os.path.join(base_path, relative_path)
 
+def get_db_path():
+    """ Return a path for the SQLite database inside the src/data folder """
+    # Handle both development and packaged modes
+    if getattr(sys, 'frozen', False):
+        # Packaged mode, use the src/data folder in the base directory
+        base_path = os.path.abspath(os.path.dirname(sys.executable))  # Path to the executable
+        db_path = os.path.join(base_path, 'data', 'quiz.db')  # No redundant src
+    else:
+        # Development mode, use the src/data folder relative to the script
+        db_path = resource_path(os.path.join('data', 'quiz.db'))  # Inside src/data
+    
+    return db_path
+
 def connect_db():
-    # Connect to the SQLite database inside the 'data' folder under 'src'
-    db_path = resource_path('data/quiz.db')
-    conn = sqlite3.connect(db_path)
-    cursor = conn.cursor()
-    return conn, cursor
+    try:
+        # Get the correct path for the database file
+        db_path = get_db_path()
+
+        print(f"Database path: {db_path}")  # Debugging - confirm the DB path
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        return conn, cursor
+    except sqlite3.Error as e:
+        print(f"Error connecting to database: {e}")
+        sys.exit(1)
 
 def create_table(cursor):
     cursor.execute('''

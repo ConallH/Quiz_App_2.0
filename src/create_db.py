@@ -4,18 +4,43 @@ import sys
 
 def resource_path(relative_path):
     """ Get absolute path to resource, works for dev and for PyInstaller """
-    base_path = os.path.dirname(os.path.abspath(__file__))
+    try:
+        # PyInstaller creates a temp folder and stores path in _MEIPASS
+        base_path = sys._MEIPASS
+    except AttributeError:
+        # Base path is the script's directory (src folder in development)
+        base_path = os.path.dirname(__file__)  # Corrects the base path to current script folder
+    
     return os.path.join(base_path, relative_path)
+
+def get_db_path():
+    """ Return a path for the SQLite database inside the src/data folder """
+    # Handle both development and packaged modes
+    if getattr(sys, 'frozen', False):
+        # Packaged mode, use the src/data folder in the base directory
+        base_path = os.path.abspath(os.path.dirname(sys.executable))  # Path to the executable
+        db_path = os.path.join(base_path, 'data', 'quiz.db')  # No redundant src
+    else:
+        # Development mode, use the src/data folder relative to the script
+        db_path = resource_path(os.path.join('data', 'quiz.db'))  # Inside src/data
+    
+    return db_path
+
+def ensure_data_directory_exists():
+    """ Ensure the src/data directory exists """
+    data_dir = resource_path('data')
+    if not os.path.exists(data_dir):
+        os.makedirs(data_dir)
 
 def connect_db():
     try:
-        # Ensure the data directory exists
-        data_dir = resource_path('data')
-        if not os.path.exists(data_dir):
-            os.makedirs(data_dir)
-        
-        # Connect to the SQLite database
-        db_path = resource_path(os.path.join('data', 'quiz.db'))
+        # Ensure the src/data directory exists
+        ensure_data_directory_exists()
+
+        # Get the correct path for the database file
+        db_path = get_db_path()
+
+        print(f"Database path: {db_path}")  # Debugging - confirm the DB path
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
         return conn, cursor
