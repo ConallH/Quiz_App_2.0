@@ -1,0 +1,199 @@
+import sqlite3
+import random
+import tkinter as tk
+from tkinter import ttk, messagebox
+from datetime import datetime
+import os
+import sys
+
+# Handle customtkinter import
+try:
+    from customtkinter import CTk, CTkButton, CTkLabel, CTkFrame
+except ImportError:
+    messagebox.showerror("Error", "CustomTkinter is required. Please install it using: pip install customtkinter")
+    sys.exit(1)
+
+def resource_path(relative_path):
+    try:
+        base_path = sys._MEIPASS
+    except AttributeError:
+        base_path = os.path.dirname(__file__)
+    return os.path.join(base_path, relative_path)
+
+def get_db_path():
+    if getattr(sys, 'frozen', False):
+        base_path = os.path.abspath(os.path.dirname(sys.executable))
+        db_path = os.path.join(base_path, 'data', 'quiz.db')
+    else:
+        db_path = resource_path(os.path.join('data', 'quiz.db'))
+    
+    # Ensure data directory exists
+    os.makedirs(os.path.dirname(db_path), exist_ok=True)
+    return db_path
+
+def connect_db():
+    try:
+        db_path = get_db_path()
+        print(f"Database path: {db_path}")
+        
+        # Test if database is writable
+        if os.path.exists(db_path):
+            if not os.access(db_path, os.W_OK):
+                raise PermissionError(f"Database file is not writable: {db_path}")
+        
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        return conn, cursor
+    except (sqlite3.Error, PermissionError, OSError) as e:
+        messagebox.showerror("Database Error", f"Error accessing database: {str(e)}")
+        sys.exit(1)
+
+def create_table(cursor, conn):
+    try:
+        cursor.execute('''
+        CREATE TABLE IF NOT EXISTS quiz_questions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            question TEXT NOT NULL,
+            option_a TEXT NOT NULL,
+            option_b TEXT NOT NULL,
+            option_c TEXT NOT NULL,
+            option_d TEXT NOT NULL,
+            correct_answer CHAR(1) NOT NULL,
+            explanation TEXT
+        );
+        ''')
+        cursor.execute('''
+        CREATE TABLE IF NOT EXISTS quiz_results (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp TEXT NOT NULL,
+            score INTEGER NOT NULL,
+            total_questions INTEGER NOT NULL,
+            percentage REAL NOT NULL
+        );
+        ''')
+        conn.commit()
+    except sqlite3.Error as e:
+        messagebox.showerror("Database Error", f"Error creating tables: {str(e)}")
+        sys.exit(1)
+
+class QuizApp(CTk):
+    def __init__(self, questions):
+        super().__init__()
+        
+        if not questions:
+            messagebox.showerror("Error", "No questions available in the database!")
+            self.destroy()
+            return
+            
+        self.title("Quiz App")
+        self.geometry("600x400")
+        self.minsize(400, 300)  # Set minimum window size
+        
+        self.questions = questions
+        self.current_question = 0
+        self.score = 0
+        self.total_questions = len(questions)
+        self.answers = []  # Store user answers for review
+        
+        self.setup_ui()
+        
+    def setup_ui(self):
+        # Setup UI components with error handling
+        try:
+            # Main frame setup
+            self.main_frame = CTkFrame(self)
+            self.main_frame.pack(expand=True, fill="both", padx=20, pady=20)
+            
+            # Question counter label
+            self.counter_label = CTkLabel(self.main_frame, 
+                                        text="", 
+                                        font=("Arial", 12))
+            self.counter_label.pack(pady=5)
+            
+            # Rest of your UI setup code...
+            # [Previous UI setup code remains the same]
+            
+            # Add progress bar
+            self.progress = ttk.Progressbar(self.main_frame, 
+                                          length=100, 
+                                          mode='determinate')
+            self.progress.pack(fill='x', pady=5)
+            
+        except Exception as e:
+            messagebox.showerror("UI Error", f"Error setting up UI: {str(e)}")
+            self.destroy()
+            
+    def show_question(self):
+        if self.current_question < self.total_questions:
+            # Update progress bar
+            progress = (self.current_question / self.total_questions) * 100
+            self.progress['value'] = progress
+            
+            # Update question counter
+            self.counter_label.configure(
+                text=f"Question {self.current_question + 1} of {self.total_questions}")
+            
+            # [Rest of the show_question code remains the same]
+        else:
+            self.show_result()
+            
+    def check_answer(self, option):
+        if self.current_question >= self.total_questions:
+            return
+            
+        correct_answer = self.questions[self.current_question][6]
+        explanation = self.questions[self.current_question][7]
+        
+        # Store answer for review
+        self.answers.append({
+            'question': self.questions[self.current_question][1],
+            'user_answer': option,
+            'correct_answer': correct_answer,
+            'is_correct': option == correct_answer
+        })
+        
+        if option == correct_answer:
+            self.score += 1
+            result_text = "✓ Correct!"
+        else:
+            result_text = f"✗ Wrong! The correct answer is {correct_answer}."
+            
+        self.explanation_label.configure(
+            text=f"{result_text}\nExplanation: {explanation}")
+            
+        # Disable answer buttons after selection
+        for btn in [self.option_a_button, self.option_b_button, 
+                   self.option_c_button, self.option_d_button]:
+            btn.configure(state="disabled")
+            
+def main():
+    try:
+        conn, cursor = connect_db()
+        create_table(cursor, conn)
+        
+        # Check if questions exist
+        cursor.execute("SELECT COUNT(*) FROM quiz_questions")
+        question_count = cursor.fetchone()[0]
+        
+        if question_count == 0:
+            messagebox.showwarning(
+                "Warning", 
+                "No questions in database. Please add questions first.")
+            sys.exit(1)
+            
+        questions = fetch_questions(cursor)
+        num_questions = min(10, len(questions))  # Don't try to sample more than available
+        selected_questions = random.sample(questions, num_questions)
+        
+        app = QuizApp(selected_questions)
+        app.mainloop()
+        
+    except Exception as e:
+        messagebox.showerror("Error", f"An unexpected error occurred: {str(e)}")
+        
+    finally:
+        if 'conn' in locals():
+            conn.close()
+
+if __name__ == "__main__":
+    main()
